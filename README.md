@@ -2,11 +2,15 @@
 
 <img src="Assets/logo-y.png" alt="里程碑 Y 图标" width="128">
 
-原生 macOS 离线应用。一个画布，每行一个项目，里程碑从左到右排列，最右侧即当前进度。
+macOS / Windows 离线应用。一个画布，每行一个项目，里程碑从左到右排列，最右侧即当前进度。
 
-使用 SwiftUI、AppKit 和系统 SQLite，无第三方运行时依赖。当前版本为 **1.0.3**。
+macOS 版使用 SwiftUI、AppKit 和系统 SQLite，版本为 **1.0.3**。Windows 版使用 WinForms、.NET Framework 和系统 SQLite，版本为 **1.1.0**。
+
+Windows 用户请查看 [Windows 使用与构建说明](Windows/README.md)。免安装 exe 可从 [GitHub Releases](https://github.com/3545483499/milestone/releases) 下载。
 
 ## 使用
+
+以下快捷键及路径针对 macOS；Windows 使用 Ctrl+Enter 保存、Ctrl+N 新建项目。
 
 从源码构建后，双击 `dist/里程碑.app`，也可以自行拖到「应用程序」文件夹。适用于 Apple 芯片 Mac，macOS 14 或更新版本。
 
@@ -53,6 +57,7 @@ Assets/                    Y 图标和生成提示词
 Tests/StorageTests.swift    数据持久化测试
 build.sh                   构建并签名 .app
 test.sh                    运行数据库测试
+Windows/                   Windows 版源码、构建脚本及说明
 ```
 
 构建产物、缓存、应用备份和本地数据库均不纳入 Git。

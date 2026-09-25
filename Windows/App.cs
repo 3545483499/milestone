@@ -12,7 +12,7 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("里程碑")]
 [assembly: AssemblyDescription("离线项目里程碑画布")]
 [assembly: AssemblyProduct("里程碑")]
-[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyVersion("1.1.1.0")]
 
 namespace MilestoneWindows
 {
@@ -53,15 +53,16 @@ namespace MilestoneWindows
     internal sealed class CardPanel : Panel
     {
         public bool Current;
+        public float UiScale = 1f;
         public CardPanel() { DoubleBuffered = true; BackColor = Color.White; }
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using (var path = new GraphicsPath())
-            using (var pen = new Pen(Current ? Color.FromArgb(112, 160, 145) : Color.FromArgb(218, 226, 222), Current ? 1.5f : 1f))
+            using (var pen = new Pen(Current ? Color.FromArgb(112, 160, 145) : Color.FromArgb(218, 226, 222), (Current ? 1.5f : 1f) * UiScale))
             {
-                int w = Width - 2, h = Height - 2, d = 22;
+                int w = Width - 2, h = Height - 2, d = (int)Math.Round(22 * UiScale);
                 path.AddArc(1, 1, d, d, 180, 90);
                 path.AddArc(w - d, 1, d, d, 270, 90);
                 path.AddArc(w - d, h - d, d, d, 0, 90);
@@ -96,38 +97,45 @@ namespace MilestoneWindows
         private readonly List<ContextMenuStrip> menus = new List<ContextMenuStrip>();
         private bool rebuilding;
         private bool saving;
+        private readonly float uiScale;
 
-        public MainForm(Database database)
+        public MainForm(Database database, float? testScale = null)
         {
             this.database = database;
+            using (var graphics = Graphics.FromHwnd(IntPtr.Zero))
+                uiScale = testScale ?? (graphics.DpiX / 96f);
             projects = database.Load();
             Text = "里程碑";
-            Font = new Font("Microsoft YaHei UI", 9f);
-            AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(1180, 720);
-            MinimumSize = new Size(800, 500);
+            Font = UiFont(9);
+            // Every coordinate and font uses the same logical-pixel scale. Disable
+            // implicit WinForms scaling so controls rebuilt at runtime do not diverge.
+            AutoScaleMode = AutoScaleMode.None;
+            ClientSize = UiSize(1180, 720);
+            MinimumSize = UiSize(800, 500);
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = CanvasColor;
             using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("AppIcon.ico"))
                 if (stream != null) Icon = new Icon(stream);
-            header.Dock = DockStyle.Top; header.Height = 100; header.BackColor = Color.White;
-            footer.Dock = DockStyle.Bottom; footer.Height = 38; footer.BackColor = Color.White;
+            header.Dock = DockStyle.Top; header.Height = S(110); header.BackColor = Color.White;
+            footer.Dock = DockStyle.Bottom; footer.Height = S(38); footer.BackColor = Color.White;
             canvas.Dock = DockStyle.Fill; canvas.AutoScroll = true; canvas.BackColor = CanvasColor;
             Controls.Add(canvas); Controls.Add(footer); Controls.Add(header);
-            var logo = new PictureBox { Location = new Point(28, 29), Size = new Size(40, 40), SizeMode = PictureBoxSizeMode.Zoom };
+            var logo = new PictureBox { Location = UiPoint(28, 29), Size = UiSize(40, 40), SizeMode = PictureBoxSizeMode.Zoom };
             using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Logo.png"))
                 if (stream != null) { using (var image = Image.FromStream(stream)) logo.Image = new Bitmap(image); }
             header.Controls.Add(logo);
-            header.Controls.Add(LabelAt("里程碑", 82, 20, 280, 32, 21, Color.FromArgb(35, 42, 39), true));
-            header.Controls.Add(LabelAt("把每一步，留在这里。", 84, 59, 300, 22, 9, Color.Gray, false));
+            header.Controls.Add(LabelAt("里程碑", 82, 18, 280, 42, 21, Color.FromArgb(35, 42, 39), true));
+            header.Controls.Add(LabelAt("把每一步，留在这里。", 84, 65, 300, 24, 9, Color.Gray, false));
             var create = ButtonAt("＋ 新建项目", 0, 31, 130, 38, true);
-            create.Anchor = AnchorStyles.Top | AnchorStyles.Right; create.Left = ClientSize.Width - 158;
+            create.Anchor = AnchorStyles.Top | AnchorStyles.Right; create.Left = ClientSize.Width - S(158);
             create.Click += (s, e) => NewProject(); header.Controls.Add(create);
-            countLabel.Location = new Point(28, 9); countLabel.AutoSize = true; countLabel.ForeColor = Color.Gray;
+            countLabel.Location = UiPoint(28, 9); countLabel.AutoSize = true; countLabel.ForeColor = Color.Gray;
             footer.Controls.Add(countLabel);
             var hint = LabelAt("回车换行 · Ctrl+Enter 或点击空白处保存", 0, 9, 380, 22, 9, Color.Gray, false);
             hint.TextAlign = ContentAlignment.TopRight; hint.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            hint.Left = ClientSize.Width - 408; footer.Controls.Add(hint);
+            hint.Left = ClientSize.Width - S(408); footer.Controls.Add(hint);
+            footer.Resize += (s, e) => LayoutFooter(hint);
+            countLabel.TextChanged += (s, e) => LayoutFooter(hint);
             canvas.MouseDown += (s, e) => SaveAndBlur();
             header.MouseDown += (s, e) => SaveAndBlur();
             footer.MouseDown += (s, e) => SaveAndBlur();
@@ -146,15 +154,24 @@ namespace MilestoneWindows
             return base.ProcessCmdKey(ref msg, keyData);
         }
 
-        private static Label LabelAt(string text, int x, int y, int width, int height, float size, Color color, bool bold)
+        private int S(int value) { return (int)Math.Round(value * uiScale); }
+        private Size UiSize(int width, int height) { return new Size(S(width), S(height)); }
+        private Point UiPoint(int x, int y) { return new Point(S(x), S(y)); }
+        private Font UiFont(float points, bool bold = false)
         {
-            return new Label { Text = text, Location = new Point(x, y), Size = new Size(width, height),
-                Font = new Font("Microsoft YaHei UI", size, bold ? FontStyle.Bold : FontStyle.Regular), ForeColor = color, BackColor = Color.Transparent };
+            return new Font("Microsoft YaHei UI", points * (96f / 72f) * uiScale,
+                bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel);
         }
-        private static Button ButtonAt(string text, int x, int y, int width, int height, bool primary)
+
+        private Label LabelAt(string text, int x, int y, int width, int height, float size, Color color, bool bold)
         {
-            var button = new Button { Text = text, Location = new Point(x, y), Size = new Size(width, height), FlatStyle = FlatStyle.Flat,
-                BackColor = primary ? Green : Color.White, ForeColor = primary ? Color.White : Green, Cursor = Cursors.Hand };
+            return new Label { Text = text, Location = UiPoint(x, y), Size = UiSize(width, height),
+                Font = UiFont(size, bold), ForeColor = color, BackColor = Color.Transparent };
+        }
+        private Button ButtonAt(string text, int x, int y, int width, int height, bool primary)
+        {
+            var button = new Button { Text = text, Location = UiPoint(x, y), Size = UiSize(width, height), FlatStyle = FlatStyle.Flat,
+                Font = UiFont(9), BackColor = primary ? Green : Color.White, ForeColor = primary ? Color.White : Green, Cursor = Cursors.Hand };
             button.FlatAppearance.BorderColor = Color.FromArgb(203, 220, 212);
             button.FlatAppearance.BorderSize = primary ? 0 : 1;
             return button;
@@ -171,7 +188,7 @@ namespace MilestoneWindows
             canvas.AutoScrollPosition = Point.Empty;
             if (projects.Count == 0)
             {
-                var empty = new Panel { Location = new Point(28, 75), Size = new Size(670, 190) };
+                var empty = new Panel { Location = UiPoint(28, 75), Size = UiSize(670, 190) };
                 empty.Controls.Add(LabelAt("从第一个项目开始", 0, 10, 620, 42, 22, Green, true));
                 empty.Controls.Add(LabelAt("一行一个项目，一步一个里程碑。", 0, 63, 620, 30, 11, Color.Gray, false));
                 var add = ButtonAt("＋ 新建项目", 0, 114, 150, 40, true);
@@ -192,12 +209,12 @@ namespace MilestoneWindows
 
         private void BuildRow(Project project, int index)
         {
-            var row = new Panel { BackColor = CanvasColor, Height = 188, Tag = project.milestones.Count };
+            var row = new Panel { BackColor = CanvasColor, Height = S(188), Tag = project.milestones.Count };
             rows.Add(row); canvas.Controls.Add(row);
             row.MouseDown += (s, e) => SaveAndBlur();
             row.Controls.Add(LabelAt((index + 1).ToString("D2"), 0, 27, 166, 20, 9, Color.DarkGray, false));
-            var name = new TextBox { Text = project.name, Location = new Point(0, 55), Width = 168, BorderStyle = BorderStyle.None,
-                BackColor = CanvasColor, Font = new Font("Microsoft YaHei UI", 12, FontStyle.Bold), AccessibleName = "项目名称" };
+            var name = new TextBox { Text = project.name, Location = UiPoint(0, 55), Width = S(168), BorderStyle = BorderStyle.None,
+                BackColor = CanvasColor, Font = UiFont(12, true), AccessibleName = "项目名称" };
             name.Leave += (s, e) => { if (!rebuilding) SaveEdits(); };
             name.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; SaveAndBlur(); } };
             editors.Add(new EditorBinding { Box = name, ProjectId = project.id }); row.Controls.Add(name);
@@ -220,14 +237,14 @@ namespace MilestoneWindows
             };
             row.Controls.Add(add);
             row.Paint += (s, e) => {
-                using (var pen = new Pen(Color.FromArgb(188, 207, 198), 1.2f))
+                using (var pen = new Pen(Color.FromArgb(188, 207, 198), 1.2f * uiScale))
                 {
                     for (int n = 1; n < project.milestones.Count; n++)
                     {
-                        int x = 196 + n * 278 - 36;
-                        e.Graphics.DrawLine(pen, x, 83, x + 27, 83);
-                        e.Graphics.DrawLine(pen, x + 23, 79, x + 27, 83);
-                        e.Graphics.DrawLine(pen, x + 23, 87, x + 27, 83);
+                        int x = S(196 + n * 278 - 36);
+                        e.Graphics.DrawLine(pen, x, S(83), x + S(27), S(83));
+                        e.Graphics.DrawLine(pen, x + S(23), S(79), x + S(27), S(83));
+                        e.Graphics.DrawLine(pen, x + S(23), S(87), x + S(27), S(83));
                     }
                     e.Graphics.DrawLine(pen, 0, row.Height - 1, row.Width, row.Height - 1);
                 }
@@ -237,11 +254,11 @@ namespace MilestoneWindows
         private void BuildCard(Panel row, Project project, Milestone node, int index)
         {
             bool current = index == project.milestones.Count - 1;
-            var card = new CardPanel { Current = current, Location = new Point(196 + index * 278, 12), Size = new Size(238, 148) };
+            var card = new CardPanel { Current = current, UiScale = uiScale, Location = UiPoint(196 + index * 278, 12), Size = UiSize(238, 148) };
             card.Controls.Add(LabelAt(current ? "当前进度" : (index + 1).ToString("D2"), 16, 13, 165, 20, 8.5f, current ? Green : Color.Gray, false));
-            var editor = new TextBox { Text = node.text.Replace("\n", "\r\n"), Multiline = true, AcceptsReturn = true, WordWrap = true,
-                Location = new Point(16, 43), Size = new Size(206, 56), BorderStyle = BorderStyle.None,
-                Font = new Font("Microsoft YaHei UI", 10), BackColor = Color.White, ForeColor = Color.FromArgb(35, 42, 39),
+            var editor = new TextBox { Text = Database.Normalize(node.text).Replace("\n", "\r\n"), Multiline = true, AcceptsReturn = true, WordWrap = true,
+                Location = UiPoint(16, 43), Size = UiSize(206, 56), BorderStyle = BorderStyle.None,
+                Font = UiFont(10), BackColor = Color.White, ForeColor = Color.FromArgb(35, 42, 39),
                 AccessibleName = "里程碑文字", ScrollBars = ScrollBars.Vertical };
             var time = LabelAt(Database.DisplayTime(node.modifiedAt), 16, 115, 207, 20, 8, Color.Gray, false);
             var placeholder = LabelAt("写下这个里程碑…", 16, 44, 194, 28, 10, Color.DarkGray, false);
@@ -251,9 +268,9 @@ namespace MilestoneWindows
             editor.Enter += (s, e) => placeholder.Visible = false;
             editor.Leave += (s, e) => { placeholder.Visible = editor.TextLength == 0; if (!rebuilding) SaveEdits(); };
             Action resize = () => {
-                int textHeight = TextRenderer.MeasureText(editor.Text + "\n ", editor.Font, new Size(183, Int32.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl | TextFormatFlags.NoPrefix).Height;
-                editor.Height = Math.Min(216, Math.Max(56, textHeight + 4));
-                time.Top = editor.Bottom + 14; card.Height = time.Bottom + 12;
+                int textHeight = TextRenderer.MeasureText(editor.Text + "\n ", editor.Font, new Size(S(183), Int32.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl | TextFormatFlags.NoPrefix).Height;
+                editor.Height = Math.Min(S(216), Math.Max(S(56), textHeight + S(4)));
+                time.Top = editor.Bottom + S(14); card.Height = time.Bottom + S(12);
                 if (!rebuilding) LayoutRows();
             };
             editor.TextChanged += (s, e) => { placeholder.Visible = editor.TextLength == 0 && !editor.Focused; resize(); };
@@ -276,24 +293,40 @@ namespace MilestoneWindows
             row.Controls.Add(card); resize();
         }
 
-        private ContextMenuStrip NewMenu() { var menu = new ContextMenuStrip(); menus.Add(menu); return menu; }
+        private ContextMenuStrip NewMenu() { var menu = new ContextMenuStrip { Font = UiFont(9) }; menus.Add(menu); return menu; }
+        private void LayoutFooter(Label hint)
+        {
+            if (footer.ClientSize.Width <= 0) return;
+            int margin = S(28);
+            int hintWidth = S(380);
+            bool stacked = countLabel.Right + S(24) + hintWidth + margin > footer.ClientSize.Width;
+            hint.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            hint.Width = stacked ? Math.Max(1, footer.ClientSize.Width - margin * 2) : hintWidth;
+            int textHeight = TextRenderer.MeasureText(hint.Text, hint.Font, new Size(hint.Width, Int32.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix).Height;
+            hint.Height = Math.Max(S(22), textHeight);
+            hint.Location = new Point(stacked ? margin : footer.ClientSize.Width - margin - hintWidth,
+                stacked ? countLabel.Bottom + S(8) : S(9));
+            hint.TextAlign = stacked ? ContentAlignment.TopLeft : ContentAlignment.TopRight;
+            int needed = hint.Bottom + S(9);
+            if (footer.Height != needed) footer.Height = needed;
+        }
         private void LayoutRows()
         {
             if (rebuilding) return;
-            int top = 20;
+            int top = S(20);
             Point scroll = canvas.AutoScrollPosition;
             int widest = 0;
             foreach (var row in rows)
             {
-                int bottom = 148;
+                int bottom = S(148);
                 foreach (Control child in row.Controls) if (child is CardPanel) bottom = Math.Max(bottom, child.Bottom);
-                row.Height = bottom + 28;
-                row.Width = Math.Max(canvas.ClientSize.Width - 56, 196 + (int)row.Tag * 278 + 110);
-                row.Location = new Point(28 + scroll.X, top + scroll.Y);
-                top += row.Height + 12;
-                widest = Math.Max(widest, row.Width + 56);
+                row.Height = bottom + S(28);
+                row.Width = Math.Max(canvas.ClientSize.Width - S(56), S(196 + (int)row.Tag * 278 + 110));
+                row.Location = new Point(S(28) + scroll.X, top + scroll.Y);
+                top += row.Height + S(12);
+                widest = Math.Max(widest, row.Width + S(56));
             }
-            canvas.AutoScrollMinSize = new Size(widest, rows.Count == 0 ? 0 : top + 40);
+            canvas.AutoScrollMinSize = new Size(widest, rows.Count == 0 ? 0 : top + S(40));
         }
 
         private bool Confirm(string message) { return MessageBox.Show(this, message, "里程碑", MessageBoxButtons.OKCancel, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.OK; }
@@ -350,7 +383,7 @@ namespace MilestoneWindows
         private void NewProject()
         {
             if (!SaveEdits()) return;
-            using (var dialog = new ProjectDialog())
+            using (var dialog = new ProjectDialog(uiScale))
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                 {
                     var project = new Project { name = dialog.ProjectName };
@@ -364,6 +397,61 @@ namespace MilestoneWindows
         }
 
         // Exercises actual editor controls and command routing in the isolated test database.
+        internal void VerifyLayout()
+        {
+            VerifyLabels(header); VerifyLabels(footer); VerifyLabels(canvas);
+            var heading = header.Controls.OfType<Label>().ToArray();
+            if (heading[0].Bounds.IntersectsWith(heading[1].Bounds)) throw new Exception("标题与副标题重叠");
+            var foot = footer.Controls.OfType<Label>().ToArray();
+            if (foot[0].Bounds.IntersectsWith(foot[1].Bounds)) throw new Exception("底栏文字重叠 scale=" + uiScale + " client=" + ClientSize + " left=" + foot[0].Bounds + " right=" + foot[1].Bounds);
+            for (int i = 0; i < rows.Count; i++)
+            {
+                if (i > 0 && rows[i - 1].Bottom > rows[i].Top) throw new Exception("项目行重叠");
+                foreach (var card in rows[i].Controls.OfType<CardPanel>())
+                {
+                    var editor = card.Controls.OfType<TextBox>().Single();
+                    foreach (var label in card.Controls.OfType<Label>())
+                    {
+                        if (label.Text != "写下这个里程碑…" && editor.Bounds.IntersectsWith(label.Bounds))
+                            throw new Exception("文本与状态或时间重叠");
+                        if (label.Right > card.ClientSize.Width || label.Bottom > card.ClientSize.Height)
+                            throw new Exception("节点文字超出卡片");
+                    }
+                }
+            }
+        }
+
+        private void VerifyLabels(Control parent)
+        {
+            foreach (Control child in parent.Controls)
+            {
+                var label = child as Label;
+                if (label != null)
+                {
+                    var measured = TextRenderer.MeasureText(label.Text, label.Font, new Size(label.Width, Int32.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                    if (measured.Height > label.Height || measured.Width > label.Width)
+                        throw new Exception("文字裁切: " + label.Text + " measured=" + measured + " bounds=" + label.Size + " scale=" + uiScale);
+                    if ((parent == header || parent == footer) && (label.Top < 0 || label.Bottom > parent.Height))
+                        throw new Exception("标题或底栏文字超出容器");
+                }
+                VerifyLabels(child);
+            }
+        }
+
+        internal void VerifyRebuildAndResize()
+        {
+            Rebuild(); Application.DoEvents(); VerifyLayout();
+            var added = new Milestone();
+            Mutate(list => list[0].milestones.Add(added), null);
+            Application.DoEvents(); VerifyLayout();
+            Mutate(list => list[0].milestones.RemoveAll(x => x.id == added.id), null);
+            ClientSize = UiSize(800, 580); Application.DoEvents(); VerifyLayout();
+            var binding = editors.First(x => x.NodeId != null);
+            binding.Box.Text = String.Join("\r\n", Enumerable.Repeat("多行内容测试，卡片需要自动增高。", 15));
+            Application.DoEvents(); VerifyLayout();
+            SaveAndBlur();
+        }
+
         internal void VerifyEditorBehavior()
         {
             var binding = editors.First(x => x.NodeId != null);
@@ -388,14 +476,16 @@ namespace MilestoneWindows
     {
         private readonly TextBox input = new TextBox();
         public string ProjectName { get { return input.Text.Trim(); } }
-        public ProjectDialog()
+        public ProjectDialog(float scale)
         {
-            Text = "新建项目"; ClientSize = new Size(380, 146); FormBorderStyle = FormBorderStyle.FixedDialog;
+            Func<int, int> px = value => (int)Math.Round(value * scale);
+            AutoScaleMode = AutoScaleMode.None;
+            Text = "新建项目"; ClientSize = new Size(px(380), px(146)); FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false; MinimizeBox = false; StartPosition = FormStartPosition.CenterParent;
-            Font = new Font("Microsoft YaHei UI", 10); ShowInTaskbar = false;
-            input.SetBounds(24, 28, 332, 30); Controls.Add(input);
-            var cancel = new Button { Text = "取消", Location = new Point(182, 92), Size = new Size(80, 30), DialogResult = DialogResult.Cancel };
-            var create = new Button { Text = "创建", Location = new Point(276, 92), Size = new Size(80, 30), Enabled = false };
+            Font = new Font("Microsoft YaHei UI", 10 * (96f / 72f) * scale, FontStyle.Regular, GraphicsUnit.Pixel); ShowInTaskbar = false;
+            input.SetBounds(px(24), px(28), px(332), px(30)); Controls.Add(input);
+            var cancel = new Button { Text = "取消", Location = new Point(px(182), px(92)), Size = new Size(px(80), px(30)), DialogResult = DialogResult.Cancel };
+            var create = new Button { Text = "创建", Location = new Point(px(276), px(92)), Size = new Size(px(80), px(30)), Enabled = false };
             input.TextChanged += (s, e) => create.Enabled = ProjectName.Length > 0;
             create.Click += (s, e) => { if (ProjectName.Length > 0) DialogResult = DialogResult.OK; };
             Controls.Add(cancel); Controls.Add(create); AcceptButton = create; CancelButton = cancel;

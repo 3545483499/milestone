@@ -22,6 +22,7 @@ namespace MilestoneWindows
                 var project = new Project { name = "ESP32 小黄人" };
                 project.milestones.Add(first); project.milestones.Add(second);
                 var projects = new List<Project> { project, new Project { name = "网站设计" } };
+                projects[1].milestones.Add(new Milestone());
                 using (var db = new Database(path))
                 {
                     Check(db.Load().Count == 0, "新库非空"); db.Save(projects);
@@ -44,20 +45,26 @@ namespace MilestoneWindows
                     restored = db.Load();
                     Check(restored[0].milestones[1].text == first.text, "Unicode 与空行保存失败");
                     // Render and exercise the real WinForms controls against this disposable database.
-                    using (var form = new MainForm(db))
+                    foreach (float scale in new float[] { 1f, 1.25f, 1.5f, 2f })
                     {
-                        form.Show(); Application.DoEvents(); form.VerifyEditorBehavior(); Application.DoEvents();
-                        using (var image = new Bitmap(form.Width, form.Height))
+                        db.Save(projects);
+                        using (var form = new MainForm(db, scale))
                         {
-                            form.DrawToBitmap(image, new Rectangle(Point.Empty, image.Size));
-                            image.Save(Path.ChangeExtension(report, ".png"), System.Drawing.Imaging.ImageFormat.Png);
+                            form.Show(); Application.DoEvents(); form.VerifyEditorBehavior(); Application.DoEvents();
+                            form.VerifyLayout();
+                            using (var image = new Bitmap(form.Width, form.Height))
+                            {
+                                form.DrawToBitmap(image, new Rectangle(Point.Empty, image.Size));
+                                image.Save(Path.ChangeExtension(report, ".dpi-" + (scale * 100).ToString("0") + ".png"), System.Drawing.Imaging.ImageFormat.Png);
+                            }
+                            form.VerifyRebuildAndResize();
+                            form.Close();
                         }
-                        form.Close();
                     }
                     restored = db.Load(); restored[0].milestones.RemoveAt(0); restored.RemoveAt(1); db.Save(restored);
                     Check(db.Load().Count == 1 && db.Load()[0].milestones.Count == 1, "删除持久化失败");
                 }
-                File.WriteAllText(report, "PASS: Windows SQLite, restart persistence, multiline, blank lines, Unicode, timestamps, reorder, boundaries, deletion, actual editor controls, Ctrl+Enter command routing, blur-save.\r\nOS: " + Environment.OSVersion + "\r\n64-bit process: " + Environment.Is64BitProcess, Encoding.UTF8);
+                File.WriteAllText(report, "PASS: Windows SQLite, restart persistence, multiline, blank lines, Unicode, timestamps, reorder, boundaries, deletion, actual editor controls, Ctrl+Enter command routing, blur-save, layout at 100/125/150/200 percent, label measurement, card overlap, dynamic rebuild, narrow window and long text.\r\nOS: " + Environment.OSVersion + "\r\n64-bit process: " + Environment.Is64BitProcess, Encoding.UTF8);
                 return 0;
             }
             catch (Exception error) { File.WriteAllText(report, "FAIL\r\n" + error, Encoding.UTF8); return 1; }

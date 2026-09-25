@@ -4,7 +4,7 @@
 
 macOS / Windows 离线应用。一个画布，每行一个项目，里程碑从左到右排列，最右侧即当前进度。
 
-macOS 版使用 SwiftUI、AppKit 和系统 SQLite，版本为 **1.0.3**。Windows 版使用 WinForms、.NET Framework 和系统 SQLite，版本为 **1.1.0**。
+macOS 版使用 SwiftUI、AppKit 和系统 SQLite，版本为 **1.0.3**。Windows 版使用 WinForms、.NET Framework 和系统 SQLite，版本为 **1.1.1**。
 
 Windows 用户请查看 [Windows 使用与构建说明](Windows/README.md)。免安装 exe 可从 [GitHub Releases](https://github.com/3545483499/milestone/releases) 下载。
 

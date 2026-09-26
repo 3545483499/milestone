@@ -2,6 +2,10 @@
 
 轻量、离线、免安装。解压后双击 **里程碑.exe** 即可使用。
 
+**[下载 Windows 1.1.1 压缩包](https://github.com/3545483499/milestone/releases/download/v1.1.1/milestone-windows-1.1.1.zip)** → 右键「全部解压缩」→ 双击里面的「里程碑.exe」。请先解压，不要直接在压缩包中运行；GitHub 的 Source code 是源码，不是可执行程序。
+
+Mac 用户请使用 [Mac 下载与使用指南](../README.md#mac下载后怎么打开)，不要下载 exe。
+
 当前版本 **1.1.1**，已修复高 DPI 字体与控件重叠问题。升级时退出旧版，替换 exe 后重新打开；数据库目录保持不变。
 
 ## 系统要求
